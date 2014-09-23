@@ -4,6 +4,28 @@
 
 Construct.WebGL = {};
 
+Construct.WebGL.VertexShader = [
+  'varying vec2 vUv;',
+  'void main() {',
+  '  vUv = uv;',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+  '}'
+].join('\n');
+
+Construct.WebGL._Scene = new THREE.Scene();
+Construct.WebGL._Mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ) );
+Construct.WebGL._Scene.add( Construct.WebGL._Mesh );
+
+/*
+Construct.WebGL.GridRenderingFragmentShader = [
+  'varying vec2 vUv;',
+  'uniform sampler2D tDiffuse;',
+  'void main() {',
+  '  gl_FragColor = texture2D( tDiffuse, vUv );',
+  '}'
+].join('\n');
+*/
+
 (function(ConstructRoot) {
     // Create a name for a node
     function node_namer(node) { return 'node_' + node.code_generation_numbering; }
@@ -164,24 +186,39 @@ Construct.WebGL.generateGLSL = function(root_node) {
     node_function_code.forEach(function(node_code) { complete_glsl.push(node_code); });
     rendering_code.forEach(function(rendering_code_line) { complete_glsl.push(rendering_code_line); });
 
-    return complete_glsl.join('\n');
+    return {
+        code: complete_glsl.join('\n'),
+        uniforms: {}
+    };
 };
 
 Construct.WebGL.render = function(field, parameters) {
 
     // Generate GLSL for the field's root node
-    var glsl = Construct.WebGL.generateGLSL(field.node);
+    var code_generation = Construct.WebGL.generateGLSL(field.node);
 
-    console.log(glsl);
-/*
-    var vShader = $('vertexshader');
-    var fShader = $('fragmentshader');
+    console.log("Generated GLSL code...");
+    console.log(code_generation.code);
+
+
+
     var shaderMaterial =
         new THREE.ShaderMaterial({
-            vertexShader:   vShader.text(),
-            fragmentShader: fShader.text()
+            vertexShader:   Construct.WebGL.VertexShader,
+            fragmentShader: code_generation.code
         });
-        */
+
+    var renderer = parameters.renderer;
+
+    // If no render target provided, render to the screen
+    if (parameters.renderTarget) {
+        renderer.setRenderTarget(parameters.renderTarget);
+        renderer.render( scene, cameraRTT, rtTexture, true );
+    } else {
+        renderer.setRenderTarget(null);
+        renderer.render( scene, camera );
+    }
+
 };
 
 
