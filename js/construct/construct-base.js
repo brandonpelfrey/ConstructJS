@@ -66,6 +66,9 @@ Construct.ScalarFieldNodeTypes.Sine = _create_field_node_type(Construct.ScalarFi
 Construct.ScalarFieldNodeTypes.Log = _create_field_node_type(Construct.ScalarFieldNode, [Construct.ScalarFieldNode]);
 Construct.ScalarFieldNodeTypes.Exponential = _create_field_node_type(Construct.ScalarFieldNode, [Construct.ScalarFieldNode]);
 Construct.ScalarFieldNodeTypes.DotProduct = _create_field_node_type(Construct.ScalarFieldNode, [Construct.VectorFieldNode, Construct.VectorFieldNode]);
+Construct.ScalarFieldNodeTypes.Warp = _create_field_node_type(Construct.ScalarFieldNode, [Construct.ScalarFieldNode, Construct.VectorFieldNode]);
+Construct.ScalarFieldNodeTypes.Mask = _create_field_node_type(Construct.ScalarFieldNode, [Construct.ScalarFieldNode]);
+Construct.ScalarFieldNodeTypes.TwoNorm = _create_field_node_type(Construct.ScalarFieldNode, [Construct.VectorFieldNode]);
 
 // Vector Field Node Types
 Construct.VectorFieldNodeTypes = {};
@@ -75,8 +78,8 @@ Construct.VectorFieldNodeTypes.AddVector = _create_field_node_type(Construct.Vec
 Construct.VectorFieldNodeTypes.SubtractVector = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.VectorFieldNode]);
 Construct.VectorFieldNodeTypes.MultiplyScalar = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.ScalarFieldNode]);
 Construct.VectorFieldNodeTypes.DivideScalar = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.ScalarFieldNode]);
-Construct.VectorFieldNodeTypes.TwoNorm = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode]);
 Construct.VectorFieldNodeTypes.CrossProduct = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.VectorFieldNode]);
+Construct.VectorFieldNodeTypes.Warp = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.VectorFieldNode]);
 Construct.VectorFieldNodeTypes.Identity = _create_field_node_type(Construct.VectorFieldNode, []);
 
 // Matrix Field Node Types

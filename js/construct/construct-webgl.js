@@ -15,6 +15,8 @@ Construct.WebGL.VertexShader = [
 Construct.WebGL._Scene = new THREE.Scene();
 Construct.WebGL._Mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ) );
 Construct.WebGL._Scene.add( Construct.WebGL._Mesh );
+Construct.WebGL._Camera = new THREE.OrthographicCamera( -1, 1, 1, -1, -2, 2 );
+Construct.WebGL._Camera.position.z = 1;
 
 /*
 Construct.WebGL.GridRenderingFragmentShader = [
@@ -45,7 +47,10 @@ Construct.WebGL.GridRenderingFragmentShader = [
             Sine:           'return sin( #child(x) );',
             Log:            'return log( #child(x) );',
             Exponential:    'return exp( #child(x) );',
-            DotProduct:     'return dot( #left(x), #right(x) );'
+            DotProduct:     'return dot( #left(x), #right(x) );',
+            TwoNorm:        'return length( #child(x) );',
+            Mask:           'return #child(x) > 0.0 ? 1.0 : 0.0;',
+            Warp:           'return #left( #right( x ) );'
         },
         VectorFieldNodeTypes: {
             Constant:       'return vec2( float($x), float($y) );',
@@ -53,8 +58,8 @@ Construct.WebGL.GridRenderingFragmentShader = [
             SubtractVector: 'return #left(x) - #right(x);',
             MultiplyScalar: 'return #left(x) * #right(x);',
             DivideScalar:   'return #left(x) / #right(x);',
-            TwoNorm:        'return length( #child(x) );',
             CrossProduct:   'return cross( #left(x), #right(x) );',
+            Warp:           'return #left( #right( x ) );',
             Identity:       'return x;'
         },
         MatrixFieldNodeTypes: {
@@ -69,6 +74,17 @@ Construct.WebGL.GridRenderingFragmentShader = [
             Exponential:    'mat2 X = #child(x), Y = mat2(1,0,0,1); float kf = 1; for(int k=1; k<10; ++k) { kf *= float(k); Y = Y * X / kf; } return Y;',
             Log:            'TODO'
         }
+    };
+
+    // Code for computing the gradient
+    var NodeGradientCodes = {
+      ScalarFieldNodeTypes: {
+      },
+      VectorFieldNodeTypes: {
+      },
+      MatrixFieldNodeTypes: {
+        /* None. Gradients of matrix fields leads to 3rd-order tensors which aren't modeled in ConstructJS. */
+      }
     };
 
     // Return types for synthesized WebGL functions
@@ -158,19 +174,19 @@ Construct.WebGL.generateGLSL = function(root_node) {
     // Generate code for outputting the root values
     var rendering_code = [];
     rendering_code.push('void main() {');
-    rendering_code.push('  const vec2 x = vUv;');
+    rendering_code.push('  vec2 x = vUv * 2.0 - 1.0;');
 
     var root_node_function_name = Construct.WebGL.node_namer(root_node);
     if (root_node instanceof Construct.ScalarFieldNode) {
-        rendering_code.push('  const float root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
-        rendering_code.push('  gl_FragColor = vec4(root);');
+        rendering_code.push('  float root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
+        rendering_code.push('  gl_FragColor = vec4(root,root,root,1);');
     }
     else if (root_node instanceof Construct.VectorFieldNode) {
-        rendering_code.push('  const vec2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
+        rendering_code.push('  vec2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
         rendering_code.push('  gl_FragColor = vec4(root, root)');
     }
     else if (root_node instanceof Construct.MatrixFieldNode) {
-        rendering_code.push('  const mat2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
+        rendering_code.push('  mat2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
         rendering_code.push('  gl_FragColor = vec4(root[0], root[1]);');
     }
     rendering_code.push('}');
@@ -193,20 +209,21 @@ Construct.WebGL.generateGLSL = function(root_node) {
 };
 
 Construct.WebGL.render = function(field, parameters) {
+    if (!parameters) { console.error("No parameters passed to WebGL Renderer for ConstructJS."); }
 
     // Generate GLSL for the field's root node
     var code_generation = Construct.WebGL.generateGLSL(field.node);
 
-    console.log("Generated GLSL code...");
-    console.log(code_generation.code);
-
-
+//    console.log("Generated GLSL code...");
+//    console.log(code_generation.code);
 
     var shaderMaterial =
         new THREE.ShaderMaterial({
             vertexShader:   Construct.WebGL.VertexShader,
             fragmentShader: code_generation.code
         });
+
+    Construct.WebGL._Mesh.material = shaderMaterial;
 
     var renderer = parameters.renderer;
 
@@ -215,10 +232,13 @@ Construct.WebGL.render = function(field, parameters) {
         renderer.setRenderTarget(parameters.renderTarget);
         renderer.render( scene, cameraRTT, rtTexture, true );
     } else {
-        renderer.setRenderTarget(null);
+        var scene = Construct.WebGL._Scene;
+        var camera = Construct.WebGL._Camera;
+
+        renderer.setRenderTarget( null );
+        renderer.clear();
         renderer.render( scene, camera );
     }
-
 };
 
 

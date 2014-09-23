@@ -5,22 +5,43 @@
     <title></title>
 </head>
 <body>
+
+<div id="container"></div>
+
+<script src="js/three.min.js"></script>
 <script src="js/construct/construct-base.js"></script>
 <script src="js/construct/construct-webgl.js"></script>
 <script src="js/construct/construct-user-functions.js"></script>
-<script src="js/three.min.js"></script>
 
 <script>
     (function(obj){ for(var key in obj) window[key] = obj[key]; })(Construct.UserFunctions);
 </script>
 
 <script>
-    //var q = divide( add(sf(1), sf(3)), sqrt( subtract(sf(7), sf(5)) ));
-    var q = vf(1.7,2.3);
-    q = add(dot(q,q), dot(q,q));
-    q = vf(1,2);
+    var renderer = new THREE.WebGLRenderer();
+        renderer.setSize( 512, 512 );
 
-    Construct.WebGL.render(q);
+    var container = document.getElementById( 'container' );
+        container.appendChild( renderer.domElement );
+
+    // A few functions for playing around and testing
+    // Translation: g(x) = field( x - displacement(x) )
+    function translate( field, displacement ) { return warp( field, sub(identity(), displacement) ); }
+
+    // The signed distance to the center of a circle
+    // f(x) = radius - length( x - center )
+    function circle( center, radius ) { return sub(radius, length( sub(center, identity() ) ) ); }
+
+    // Mask a unit circle (1 inside the circle, 0 outside)
+    var q = mask( circle( vf(0,0), sf(1) ) ) ;
+
+    animate();
+
+    function animate() {
+      requestAnimationFrame( animate );
+      Construct.WebGL.render(q, {renderer: renderer});
+    }
+
 </script>
 
 </body>
