@@ -64,6 +64,51 @@ Construct.UserFunctions = {
       else if (field instanceof Construct.VectorField) {
         return Construct.VectorFieldNodeTypes.Warp.makeField({left: left.node, displacement: right.node});
       }
+    },
+    
+    rotation: function(angle) {
+      return Construct.MatrixFieldNodeTypes.Rotation.makeField({child: child.node});
+    },
+    
+    // Writing to a grid
+    writeToGrid: function(field, renderer, settings) {
+      var settings = settings || {};
 
+      // What's the resolution of the grid we're writing to?
+      var width = settings.width || 128;
+      var height = settings.height || 128;
+
+      // What is the domain that this grid should cover?
+      var gridMin = settings.gridMin || {x: -1, y: -1};
+      var gridMax = settings.gridMax || {x: 1, y: 1};
+    
+      // Get a hold of an actual render target to write to
+      var renderTarget = Construct.WebGL.RenderTargetFactory.get(width, height);
+
+      var properties = {
+        uniformData: {
+          type:  't',
+          value: renderTarget
+        },
+        gridMin: gridMin,
+        gridMax: gridMax,
+        width: width,
+        height: height
+      };
+    
+      // Create the actual node with the properties we've set up
+      var gridField;
+      if (field instanceof Construct.ScalarField) {
+        gridField = Construct.ScalarFieldNodeTypes.Grid.makeField(properties);
+      }
+      else if (field instanceof Construct.VectorField) {
+        gridField = Construct.VectorFieldNodeTypes.Grid.makeField(properties);
+      }
+
+      console.log(Construct.WebGL.generateGLSL(field.node).code);
+      // Now render to the grid
+      Construct.WebGL.render(field, {renderer: renderer, renderTarget: renderTarget});
+      
+      return gridField;
     }
 };

@@ -28,10 +28,10 @@ Construct.WebGL.GridRenderingFragmentShader = [
 ].join('\n');
 */
 
-(function(ConstructRoot) {
+(function() {
     // Create a name for a node
     function node_namer(node) { return 'node_' + node.code_generation_numbering; }
-    ConstructRoot.WebGL.node_namer = node_namer;
+    Construct.WebGL.node_namer = node_namer;
 
     // Templated function bodies for evaluating field nodes in GLSL.
     var NodeCodes = {
@@ -50,7 +50,9 @@ Construct.WebGL.GridRenderingFragmentShader = [
             DotProduct:     'return dot( #left(x), #right(x) );',
             TwoNorm:        'return length( #child(x) );',
             Mask:           'return #child(x) > 0.0 ? 1.0 : 0.0;',
-            Warp:           'return #left( #right( x ) );'
+            Warp:           'return #left( #right( x ) );',
+            Grid:           ['vec2 y = (x - vec2($gridMin.x, $gridMin.y)) / vec2($gridMax.x - $gridMin.x, $gridMax.y - $gridMin.y);',
+                             'return texture2D( $uniformName, y ).r;'].join('\n')
         },
         VectorFieldNodeTypes: {
             Constant:       'return vec2( float($x), float($y) );',
@@ -60,7 +62,9 @@ Construct.WebGL.GridRenderingFragmentShader = [
             DivideScalar:   'return #left(x) / #right(x);',
             CrossProduct:   'return cross( #left(x), #right(x) );',
             Warp:           'return #left( #right( x ) );',
-            Identity:       'return x;'
+            Identity:       'return x;',
+            Grid:           ['vec2 y = (x - vec2($gridMin.x, $gridMin.y)) / vec2($gridMax.x - $gridMin.x, $gridMax.y - $gridMin.y);',
+                             'return texture2D( $uniformName$uniformName, y ).rg;'].join('\n')
         },
         MatrixFieldNodeTypes: {
             Constant:       'return mat2( float(m11), float(m21), float(m12), float(m22) );', //GLSL Column-major constructor.
@@ -72,7 +76,9 @@ Construct.WebGL.GridRenderingFragmentShader = [
             Inverse:        'const mat2 m = #child(x); float d = m[0][0]*m[1][1] - m[1][0]*m[0][1]; return d * mat2( m[1][1], -m[0][1], -m[1][0], m[0][0]);',
             Rotation:       'const float y = #child(x); const float c=cos(y), s=sin(y); return mat2(c,s,-s,c);',
             Exponential:    'mat2 X = #child(x), Y = mat2(1,0,0,1); float kf = 1; for(int k=1; k<10; ++k) { kf *= float(k); Y = Y * X / kf; } return Y;',
-            Log:            'TODO'
+            Log:            'TODO',
+            Grid:           ['vec2 y = (x - vec2($gridMin.x, $gridMin.y)) / vec2($gridMax.x - $gridMin.x, $gridMax.y - $gridMin.y);',
+                             'return mat2(texture2D( $uniformName, y ).rgba);'].join('\n')
         }
     };
 
@@ -86,24 +92,46 @@ Construct.WebGL.GridRenderingFragmentShader = [
         /* None. Gradients of matrix fields leads to 3rd-order tensors which aren't modeled in ConstructJS. */
       }
     };
+    
+    // Data around uniforms needed for nodes.
+    // propertyName : The name of a node property (node.properties[propertyName]) which is the actual name to
+    // be bound for that uniform
+    // type: Type information for the uniform (Texture == 't')
+    var NodeUniforms = {
+      ScalarFieldNodeTypes: {
+        Grid: { propertyName: 'textureUniformName', propertyValue: 'texture', type: 't'}
+      },
+      VectorFieldNodeTypes: {
+      },
+      MatrixFieldNodeTypes: {
+        /* None. Gradients of matrix fields leads to 3rd-order tensors which aren't modeled in ConstructJS. */
+      }
+    };
 
     // Return types for synthesized WebGL functions
     var FieldNodeReturnTypes = {
         ScalarFieldNodeTypes: 'float',
         VectorFieldNodeTypes: 'vec2',
         MatrixFieldNodeTypes: 'mat2'
-    }
+    };
 
     // Node Parameters -- \$[a-zA-z]*(\.[a-zA-z]*)*
-    // TODO: Enable nested.parameter.values (recurse on match exploded on '.')
+    // Note, this also enables accessing parameters nested in objects $parameter.field.moreDeeplyNested
     function replace_node_property_patterns(str, node) {
-        var matches = str.match( /\$[a-zA-z]*(\.[a-zA-z]*)*/g );
+        var matches = str.match( /\$[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-z0-9]*)*/g );
         var result = str;
         if (matches) {
             matches.forEach(function (match) {
+                // Slice off the dollar sign
                 var property_name = match.substr(1);
-                var property_value = node.properties[property_name];
-                result = result.replace(match, property_value);
+
+                // Walk through each of the parameters until we reach the end
+                var property = node.properties;
+                property_name.split('.').forEach( function(subPropertyName){
+                    property = property[subPropertyName];
+                });
+
+                result = result.replace(match, property);
             });
         }
         return result;
@@ -127,24 +155,27 @@ Construct.WebGL.GridRenderingFragmentShader = [
     for(var fieldNodeType in NodeCodes) {
         for(var fieldNodeName in NodeCodes[fieldNodeType]) {
 
-            ConstructRoot[fieldNodeType][fieldNodeName].prototype.WebGLCodeGenerator = (function(_fieldNodeType, _fieldNodeName){
+            Construct[fieldNodeType][fieldNodeName].prototype.WebGLCodeGenerator = (function(_fieldNodeType, _fieldNodeName){
                 return function() {
 
                     // TODO: Recognize when a child node would be calculated twice and reuse the value.
                     // e.g.: x + x -> node_37(x) + node_37(x) -> temp = node_37; temp + temp
 
                     // From a general template, fill in...
-                    //  * the return type
-                    //  * function name for this node
-                    //  * the function body
-                    //  * All of the properties and child node function names for this node
                     var result = '%return_type %func_name(const vec2 x) { %function_body }';
 
+                    //  * the return type
                     result = result.replace('%return_type', FieldNodeReturnTypes[_fieldNodeType]);
+
+                    //  * the function body
                     result = result.replace('%function_body', NodeCodes[_fieldNodeType][_fieldNodeName]);
+
+                    //  * function name for this node
                     result = result.replace('%func_name', node_namer(this));
-                    result = replace_node_child_patterns(result, this);
+
+                    //  * All of the properties and child node function names for this node
                     result = replace_node_property_patterns(result, this);
+                    result = replace_node_child_patterns(result, this);
 
                     return result;
                 }
@@ -152,7 +183,69 @@ Construct.WebGL.GridRenderingFragmentShader = [
         }
     }
 
-})(Construct);
+    // Without explicitly requiring users to 'tell' us when a texture is released, we have no
+    // way to tell when something holding a texture goes out of scope. This is important because
+    // otherwise we currently forced to naively create textures very frequently (perhaps several
+    // times a frame). Because allocating these resources is very expensive, until a better
+    // solution is found, this factory keeps a 'large' ring of textures and pre-allocates those
+    // textures. The ring is assumed large enough so that it can store the number of targets
+    // that will exist during the execution of a user's code at any given point.
+    //
+    // This is a big TODO: Find a way to not have a static allocation of textures cycling.
+    Construct.WebGL.RenderTargetFactory = (function() {
+        var _texturePointer = {};
+        var _maxTextures = 20;
+        var _textures = {};
+        
+        var getKey = function(width, height) {
+            return width + 'x' + height;  
+        };
+
+        var initializeTargetsForResolution = function(width, height) {
+            var resultingTextures = [];
+
+            for(var i = 0; i < _maxTextures; ++i) {
+                resultingTextures.push( new THREE.WebGLRenderTarget(
+                    width, height,
+                    {
+                        minFilter: THREE.LinearFilter,
+                        magFilter: THREE.LinearFilter,
+                        format: THREE.RGBAFormat,
+                        type: THREE.FLOAT_TYPE
+                    })
+                );
+            }
+
+            return resultingTextures;
+        };
+
+        var texturesForResolution = function(width, height) {
+            var key = getKey(width, height);
+            if ( !_textures.hasOwnProperty(key) ) {
+              _textures[key] = initializeTargetsForResolution(width, height);
+            }
+            return _textures[key];
+        };
+
+        return {
+            get: function(width, height) {
+                var textures = texturesForResolution(width, height);
+                
+                var key = getKey(width, height);
+                
+                if (!_texturePointer.hasOwnProperty(key)) {
+                    _texturePointer[key] = 0;
+                }
+                
+                var texturePointer = _texturePointer[key];
+                var currentTarget = textures[texturePointer];
+                texturePointer = (1 + texturePointer) % _maxTextures;
+                return currentTarget;
+            }
+        };
+    })();
+
+})();
 
 Construct.WebGL.generateGLSL = function(root_node) {
 
@@ -160,9 +253,26 @@ Construct.WebGL.generateGLSL = function(root_node) {
     Construct.CodeGeneratorUtilities.numberExpressionTree(root_node);
 
     // Get all of the uniforms [{type:'sampler2D', name:'tex_000'}, ...]
-    var uniforms = [];
-    Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node){
-        // TODO: Get uniforms from those nodes that expose them.
+    var uniforms = {};
+    Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node) {
+        if( _node.properties && _node.properties.uniformData ) {
+            var newUniform = {};
+
+            // Determine the GLSL uniform type
+            if ( _node.properties.uniformData.type == 't' ) { newUniform.glslType = 'sampler2D'; }
+            if ( _node.properties.uniformData.type == 'f' ) { newUniform.glslType = 'float'; }
+
+            // The actual name of the GLSL uniform
+            newUniform.name = 'uniform_' + _node.code_generation_numbering;
+            
+            // Data used in actually binding the uniform to the context
+            newUniform.type = _node.properties.uniformData.type;
+            newUniform.value = _node.properties.uniformData.value;
+
+            _node.properties['uniformName'] = newUniform.name;
+            
+            uniforms[newUniform.name] = newUniform;
+        }
     });
 
     // Get code for all nodes in the tree
@@ -183,7 +293,7 @@ Construct.WebGL.generateGLSL = function(root_node) {
     }
     else if (root_node instanceof Construct.VectorFieldNode) {
         rendering_code.push('  vec2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
-        rendering_code.push('  gl_FragColor = vec4(root, root)');
+        rendering_code.push('  gl_FragColor = vec4(root, 0, 1)');
     }
     else if (root_node instanceof Construct.MatrixFieldNode) {
         rendering_code.push('  mat2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
@@ -191,10 +301,13 @@ Construct.WebGL.generateGLSL = function(root_node) {
     }
     rendering_code.push('}');
 
-
     // Combine these sections into the final shader code
     var complete_glsl = [];
-    uniforms.forEach(function(uniform) { complete_glsl.push('uniform ' + uniform.type + ' ' + uniform.name + ';'); });
+    (function(){
+        for(var uniformName in uniforms) {
+           complete_glsl.push('uniform ' + uniforms[uniformName].glslType + ' ' + uniformName + ';');
+        }
+    })();
 
     // THREE.js also automatically gives us the (0,0)-(1,1) UV coordinates of the pixel
     complete_glsl.push('varying vec2 vUv;');
@@ -204,7 +317,7 @@ Construct.WebGL.generateGLSL = function(root_node) {
 
     return {
         code: complete_glsl.join('\n'),
-        uniforms: {}
+        uniforms: uniforms
     };
 };
 
@@ -214,35 +327,28 @@ Construct.WebGL.render = function(field, parameters) {
     // Generate GLSL for the field's root node
     var code_generation = Construct.WebGL.generateGLSL(field.node);
 
-//    console.log("Generated GLSL code...");
-//    console.log(code_generation.code);
-
     var shaderMaterial =
         new THREE.ShaderMaterial({
             vertexShader:   Construct.WebGL.VertexShader,
-            fragmentShader: code_generation.code
+            fragmentShader: code_generation.code,
+            uniforms: code_generation.uniforms
         });
 
     Construct.WebGL._Mesh.material = shaderMaterial;
 
     var renderer = parameters.renderer;
-
+    var scene = Construct.WebGL._Scene;
+    var camera = Construct.WebGL._Camera;
+    
     // If no render target provided, render to the screen
     if (parameters.renderTarget) {
         renderer.setRenderTarget(parameters.renderTarget);
-        renderer.render( scene, cameraRTT, rtTexture, true );
+        renderer.clear();
+        renderer.render( scene, camera, parameters.renderTarget, true );
     } else {
-        var scene = Construct.WebGL._Scene;
-        var camera = Construct.WebGL._Camera;
-
         renderer.setRenderTarget( null );
         renderer.clear();
         renderer.render( scene, camera );
     }
 };
-
-
-
-
-
 

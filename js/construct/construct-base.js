@@ -2,6 +2,8 @@
  * Created by Brandon Pelfrey on 9/12/2014.
  */
 
+// TODO: Wrap all of this to avoid cluttering/leaking to global namespace.
+
 Construct = {};
 
 // The three basic field types. These fields are internally represented by an expression which is the root
@@ -69,6 +71,7 @@ Construct.ScalarFieldNodeTypes.DotProduct = _create_field_node_type(Construct.Sc
 Construct.ScalarFieldNodeTypes.Warp = _create_field_node_type(Construct.ScalarFieldNode, [Construct.ScalarFieldNode, Construct.VectorFieldNode]);
 Construct.ScalarFieldNodeTypes.Mask = _create_field_node_type(Construct.ScalarFieldNode, [Construct.ScalarFieldNode]);
 Construct.ScalarFieldNodeTypes.TwoNorm = _create_field_node_type(Construct.ScalarFieldNode, [Construct.VectorFieldNode]);
+Construct.ScalarFieldNodeTypes.Grid = _create_field_node_type(Construct.ScalarFieldNode, []);
 
 // Vector Field Node Types
 Construct.VectorFieldNodeTypes = {};
@@ -81,6 +84,7 @@ Construct.VectorFieldNodeTypes.DivideScalar = _create_field_node_type(Construct.
 Construct.VectorFieldNodeTypes.CrossProduct = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.VectorFieldNode]);
 Construct.VectorFieldNodeTypes.Warp = _create_field_node_type(Construct.VectorFieldNode, [Construct.VectorFieldNode, Construct.VectorFieldNode]);
 Construct.VectorFieldNodeTypes.Identity = _create_field_node_type(Construct.VectorFieldNode, []);
+Construct.VectorFieldNodeTypes.Grid = _create_field_node_type(Construct.VectorFieldNode, []);
 
 // Matrix Field Node Types
 Construct.MatrixFieldNodeTypes = {};
@@ -95,14 +99,13 @@ Construct.MatrixFieldNodeTypes.Inverse = _create_field_node_type(Construct.Matri
 Construct.MatrixFieldNodeTypes.Rotation = _create_field_node_type(Construct.MatrixFieldNode, [Construct.ScalarFieldNode]);
 Construct.MatrixFieldNodeTypes.Exponential = _create_field_node_type(Construct.MatrixFieldNode, [Construct.MatrixFieldNode]);
 Construct.MatrixFieldNodeTypes.Log = _create_field_node_type(Construct.MatrixFieldNode, [Construct.MatrixFieldNode]);
+Construct.MatrixFieldNodeTypes.Grid = _create_field_node_type(Construct.MatrixFieldNode, []);
 
 // Context for simulations
 Construct.Context = function() {
-
-}
-
-Construct.Context.compile = function(user_code, parameters) {
-    // Get current code generator for this context
+  // Integrate any _required_ global state into a single place.
+  // Eventually, if there are multiple code generators, this context will manage translations from one domain to another
+  // E.g. transferring a grid of scalars from GL Texture to JS FloatArray
 }
 
 // Placeholder for code generators
@@ -129,9 +132,9 @@ Construct.CodeGeneratorUtilities.numberExpressionTree = function(root_node) {
 
     Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node){
         // If it hasn't been numbered already, number this node
-        if (!('code_generation_numbering' in _node)) {
+        //if (!('code_generation_numbering' in _node)) {
             _node.code_generation_numbering = current_number++;
-        }
+        //}
     });
 }
 

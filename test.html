@@ -8,7 +8,9 @@
 
 <div id="container"></div>
 
+<script src="js/stats.min.js"></script>
 <script src="js/three.min.js"></script>
+
 <script src="js/construct/construct-base.js"></script>
 <script src="js/construct/construct-webgl.js"></script>
 <script src="js/construct/construct-user-functions.js"></script>
@@ -18,11 +20,18 @@
 </script>
 
 <script>
+    // Simple FPS gauage
+    var stats = new Stats();
+    stats.domElement.style.position = 'absolute';
+    stats.domElement.style.left = '0px';
+    stats.domElement.style.top = '0px';
+    document.body.appendChild( stats.domElement );
+
+    // Create a WebGL context for displaying to the user (and creating render targets)
     var renderer = new THREE.WebGLRenderer();
         renderer.setSize( 512, 512 );
 
-    var container = document.getElementById( 'container' );
-        container.appendChild( renderer.domElement );
+    document.getElementById( 'container' ).appendChild( renderer.domElement );
 
     // A few functions for playing around and testing
     // Translation: g(x) = field( x - displacement(x) )
@@ -34,12 +43,20 @@
 
     // Mask a unit circle (1 inside the circle, 0 outside)
     var q = mask( circle( vf(0,0), sf(1) ) ) ;
-
+    
     animate();
 
     function animate() {
+      stats.begin();
+         
+      qg = writeToGrid(q, renderer);
+      q = qg;
+      //q = mul(sf(1.1), qg);
+        //q = qg;
+      Construct.WebGL.render(qg, {renderer: renderer});
+
+      stats.end();
       requestAnimationFrame( animate );
-      Construct.WebGL.render(q, {renderer: renderer});
     }
 
 </script>
