@@ -52,6 +52,7 @@ Construct.WebGL.GridRenderingFragmentShader = [
             Mask:           'return #child(x) > 0.0 ? 1.0 : 0.0;',
             Warp:           'return #left( #right( x ) );',
             Grid:           ['vec2 y = (x - vec2($gridMin.x, $gridMin.y)) / vec2($gridMax.x - $gridMin.x, $gridMax.y - $gridMin.y);',
+                             'if (y.x<0.0 || y.y<0.0 || y.x>1.0 || y.y>1.0) { return 0.0; }', // TODO: OutsideGrid
                              'return texture2D( $uniformName, y ).r;'].join('\n')
         },
         VectorFieldNodeTypes: {
@@ -320,6 +321,9 @@ Construct.WebGL.generateGLSL = function(root_node) {
 
     // Combine these sections into the final shader code
     var complete_glsl = [];
+    
+    complete_glsl.push('precision highp float;');
+  
     (function(){
         for(var uniformName in uniforms) {
            complete_glsl.push('uniform ' + uniforms[uniformName].glslType + ' ' + uniformName + ';');

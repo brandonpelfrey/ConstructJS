@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>ConstructJS Testing - Wave Equation</title>
+</head>
+<body>
+
+<div id="container"></div>
+<script src="../js/stats.min.js"></script>
+
+<script src="../js/three.min.js"></script>
+
+<script src="../js/construct/construct-base.js"></script>
+<script src="../js/construct/construct-webgl.js"></script>
+<script src="../js/construct/construct-user-functions.js"></script>
+
+<script>
+    (function(obj){ for(var key in obj) window[key] = obj[key]; })(Construct.UserFunctions);
+</script>
+
+<script>
+    // Simple FPS gauage
+    var stats = new Stats();
+    stats.domElement.style.position = 'absolute';
+    stats.domElement.style.left = '0px';
+    stats.domElement.style.top = '0px';
+    document.body.appendChild( stats.domElement );
+
+    // Create a WebGL context for displaying to the user (and creating render targets)
+    var renderer = new THREE.WebGLRenderer();
+        renderer.setSize( 1024, 1024 );
+
+    document.getElementById( 'container' ).appendChild( renderer.domElement );
+
+    // The signed distance to the center of a circle
+    // f(x) = radius - length( x - center )
+    function circle( center, radius ) { return radius.minus( center.minus(identity()).length() ); }
+
+    // A simple "bump" made by an exponential fall-off in value from a center point
+    // bump(x ; center) = exp( -pointedness * || x - center ||^2   )
+    function bump(center, pointedness) {
+      var dx = identity().minus(center);
+      return sf(0).minus( dx.dot(dx).times(pointedness) ).exp();
+    }
+  
+    function vertical_line(x_position, width) {
+      var x_distance = identity().dot(vf(1,0)).minus(x_position).abs();
+      return width.dividedBy(2).minus(x_distance);
+    }
+  
+    function horizontal_line(y_position, width) {
+      var y_distance = identity().dot(vf(0,1)).minus(y_position).abs();
+      return width.dividedBy(2).minus(y_distance);
+    }
+  
+    // Simple unconditionally-stable advection (Method of Characteristics)
+    // (This is the method popularly-used in Stam-style fluid solvers)
+    function advect(field, velocity, dt) {
+      return field.warp( identity().minus( velocity.times(dt) ) );
+    }
+
+    // The function we want to advect
+    var q = sf(0);
+    
+    (function(){
+      for(var x=-1; x<=1; x += .1) {
+        q = q.plus( vertical_line( x, sf(.025) ).mask() ).mask();
+      }
+      for(var y=-1; y<=1; y += .1) {
+        q = q.plus( horizontal_line( y, sf(.025) ).mask() ).mask();
+      }
+    })();
+
+    animate();
+
+    function animate() {
+      stats.begin();
+      
+      // The resolution of the grid you write to
+      var grid_res = 1024;
+      
+      var x = identity().dot(vf(1,0)), y = identity().dot(vf(0,1));
+      var velocity = vf(1,0).times(y).plus(vf(0,-1).times(x));
+      
+      // Make the swirling motion lessen in strength away from the origin
+      velocity = velocity.times( bump(vf(0,0), 10) );
+      
+      // Advect the grid pattern through this swirling vector field
+      q = advect(q, velocity, .01);
+      q = writeToGrid(q, renderer, {width: grid_res, height: grid_res});
+      
+      var whatToRender = q;
+      
+      // Render to the page
+      Construct.WebGL.render(whatToRender, {renderer: renderer});
+      
+      stats.end();
+      requestAnimationFrame( animate );
+    }
+
+</script>
+
+</body>
+</html>
