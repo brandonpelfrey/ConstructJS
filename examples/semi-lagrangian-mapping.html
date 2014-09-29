@@ -76,6 +76,8 @@
 
     animate();
 
+    //var iter
+  
     function animate() {
       stats.begin();
       
@@ -89,11 +91,12 @@
       // Make the swirling motion lessen in strength away from the origin
       velocity = velocity.times( bump(vf(0,0), 10) );
 
-      // Advect the grid pattern through this swirling vector field
-      q = advect(q, velocity, .01);
-      q = writeToGrid(q, renderer, {width: grid_res, height: grid_res});
+      // Advect the mapping function through this swirling vector field
+      selma = advect(selma, velocity, .01);
+      selma = writeToGrid(selma, renderer, {width: grid_res, height: grid_res});
       
-      var whatToRender = q;
+      // In order to actually see where things have advected, we map the density through the SELMA mapping
+      var whatToRender = q.warp(selma);
       
       // Render to the page
       Construct.WebGL.render(whatToRender, {renderer: renderer});
