@@ -2,18 +2,18 @@
 <html>
 <head lang="en">
     <meta charset="UTF-8">
-    <title>ConstructJS Testing</title>
+    <title>ConstructJS Testing - Wave Equation</title>
 </head>
 <body>
 
 <div id="container"></div>
+<script src="../js/stats.min.js"></script>
 
-<script src="js/stats.min.js"></script>
-<script src="js/three.min.js"></script>
+<script src="../js/three.min.js"></script>
 
-<script src="js/construct/construct-base.js"></script>
-<script src="js/construct/construct-webgl.js"></script>
-<script src="js/construct/construct-user-functions.js"></script>
+<script src="../js/construct/construct-base.js"></script>
+<script src="../js/construct/construct-webgl.js"></script>
+<script src="../js/construct/construct-user-functions.js"></script>
 
 <script>
     (function(obj){ for(var key in obj) window[key] = obj[key]; })(Construct.UserFunctions);
@@ -37,11 +37,14 @@
     // f(x) = radius - length( x - center )
     function circle( center, radius ) { return radius.minus( center.minus(identity()).length() ); }
 
+    // A simple "bump" made by an exponential fall-off in value from a center point
+    // bump(x ; center) = exp( -pointedness * || x - center ||^2   )
     function bump(center, pointedness) {
       var dx = identity().minus(center);
       return sf(0).minus( dx.dot(dx).times(pointedness) ).exp();
     }
 
+    // Basic finite difference approximation of the Laplacian. (dx is the spacing between cells)
     function laplacian(field, dx) {
       return field.times( sf(-4) )
       .plus( field.translate(vf( dx,  0)) )
@@ -56,6 +59,7 @@
     // (For marking walls that waves should bounce off of)
     var borders = circle( vf(0,0), sf(.95) ).mask();
     
+    // The wave function starts "at rest" as a bump off-center from the domain
     var q = bump(vf(.2,.1), sf(800)), q_old = q;
   
     animate();
@@ -63,21 +67,23 @@
     function animate() {
       stats.begin();
       
+      // The resolution of the grid you write to
       var grid_res = 512;
         
-      // Simulate a classical wave (simple integration, Euler step)
-      var h2 = sf( 1/(grid_res * grid_res) );
+      // Conglomeration of constants on the Laplacian (c * dt / h)^2
+      var h2 = sf( 1 / (grid_res * grid_res) );
 
-      // Laplacian of Q
+      // Laplacian of the wave function
       var Lq = laplacian(q, 1.0/grid_res);
 
+      // Simulate a classical wave (simple integration, Euler step)
       var q_next = Lq.times(h2).plus( q.times(2) ).minus( q_old );
       
       // confine the wave to inside of the borders we defined earlier
       q_old = q.times(borders);
       q = q_next.times(borders);
       
-      // If we do not write these to a grid, this expression tree will grow exponentially with time
+      // If we do not write these to a grid, this expression tree will grow exponentially with time :)
       q_old = writeToGrid( q_old, renderer, {width: grid_res, height: grid_res});
       q = writeToGrid( q, renderer, {width: grid_res, height: grid_res});
       
@@ -85,9 +91,11 @@
       var border_grey_level = sf(.5).minus(borders).mask().times(.15);
       var q_intensity = q.abs().times(10);
       
+      // We can render a matrix whose elements encode RGBA of the output image from the quantities defined above.
       var whatToRender = matrixFromScalars( border_grey_level, border_grey_level, border_grey_level, 1 );
       whatToRender = whatToRender.plus( matrixFromScalars( q_intensity, q_intensity.times(2), q_intensity, 0).times(.5) );
       
+      // Render to the page
       Construct.WebGL.render(whatToRender, {renderer: renderer});
       
       stats.end();
