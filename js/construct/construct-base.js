@@ -9,13 +9,13 @@ Construct = {};
 // The three basic field types. These fields are internally represented by an expression which is the root
 // of an abstract expression tree
 Construct.ScalarField = function(node) {
-    this.node = node;
+  this.node = node;
 };
 Construct.VectorField = function(node) {
-    this.node = node;
+  this.node = node;
 };
 Construct.MatrixField = function(node) {
-    this.node = node;
+  this.node = node;
 };
 
 // The field node types corresponding to each of the basic field types
@@ -32,20 +32,21 @@ Construct.MatrixFieldNode.ContainingFieldType = Construct.MatrixField;
 // Programatically creates a new type inheriting from a given type. The constructor of the new generated type
 // accepts a generic object.
 function _create_field_node_type(field_node_type, child_node_types) {
-    var generated_type = function(properties) { field_node_type.call(this, properties); };
-    generated_type.prototype = Object.create(field_node_type.prototype);
-    generated_type.prototype.constructor = generated_type;
-    generated_type.prototype.child_node_types = child_node_types;
+  var generated_type = function(properties) { field_node_type.call(this, properties); };
+  generated_type.prototype = Object.create(field_node_type.prototype);
+  generated_type.prototype.constructor = generated_type;
+  generated_type.prototype.child_node_types = child_node_types;
 
-    // Set the child_names based on the number of children of the node
-    if (child_node_types.length === 0)      { generated_type.prototype.children_names = []; }
-    else if (child_node_types.length === 1) { generated_type.prototype.children_names = ['child']; }
-    else if (child_node_types.length === 2) { generated_type.prototype.children_names = ['left', 'right']; }
+  // Set the child_names based on the number of children of the node
+  if (child_node_types.length === 0)      { generated_type.prototype.children_names = []; }
+  else if (child_node_types.length === 1) { generated_type.prototype.children_names = ['child']; }
+  else if (child_node_types.length === 2) { generated_type.prototype.children_names = ['left', 'right']; }
+  else if (child_node_types.length === 4) { generated_type.prototype.children_names = ['child1', 'child2', 'child3', 'child4']; }
 
-    generated_type.makeField = function(params) {
-        return new field_node_type.ContainingFieldType(new generated_type(params));
-    }
-    return generated_type;
+  generated_type.makeField = function(params) {
+    return new field_node_type.ContainingFieldType(new generated_type(params));
+  }
+  return generated_type;
 }
 
 Construct.OperatorTypes = {};
@@ -90,6 +91,7 @@ Construct.VectorFieldNodeTypes.Grid = _create_field_node_type(Construct.VectorFi
 Construct.MatrixFieldNodeTypes = {};
 
 Construct.MatrixFieldNodeTypes.Constant = _create_field_node_type(Construct.MatrixFieldNode, []);
+Construct.MatrixFieldNodeTypes.FromScalars = _create_field_node_type(Construct.MatrixFieldNode, [Construct.ScalarFieldNode, Construct.ScalarFieldNode, Construct.ScalarFieldNode, Construct.ScalarFieldNode]);
 Construct.MatrixFieldNodeTypes.AddMatrix = _create_field_node_type(Construct.MatrixFieldNode, [Construct.MatrixFieldNode, Construct.MatrixFieldNode]);
 Construct.MatrixFieldNodeTypes.SubtractMatrix = _create_field_node_type(Construct.MatrixFieldNode, [Construct.MatrixFieldNode, Construct.MatrixFieldNode]);
 Construct.MatrixFieldNodeTypes.MultiplyMatrix = _create_field_node_type(Construct.MatrixFieldNode, [Construct.MatrixFieldNode, Construct.MatrixFieldNode]);
@@ -115,85 +117,33 @@ Construct.CodeGeneratorUtilities = {};
 
 // Post-order traversal of an expression tree, calling the passed in function with each node
 Construct.CodeGeneratorUtilities.postOrderTraversal = function(root_node, visiting_function) {
-    var node_visitor = function(_node) {
-        _node.children_names.forEach(function(child_name) {
-            node_visitor(_node.properties[child_name]);
-        });
-        visiting_function(_node);
-    };
-    node_visitor(root_node);
+  var node_visitor = function(_node) {
+    _node.children_names.forEach(function(child_name) {
+      node_visitor(_node.properties[child_name]);
+    });
+    visiting_function(_node);
+  };
+  node_visitor(root_node);
 }
 
 // Post-order traversal of an expression tree, numbering nodes. This gives us a topological sorting/ordering of the nodes
 // in the tree, so evaluating the nodes in this order will be all dependent nodes have already had values computed.
 Construct.CodeGeneratorUtilities.numberExpressionTree = function(root_node) {
-    // Number all nodes
-    var current_number = 0;
+  // Number all nodes
+  var current_number = 0;
 
-    Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node){
-        // If it hasn't been numbered already, number this node
-        //if (!('code_generation_numbering' in _node)) {
-            _node.code_generation_numbering = current_number++;
-        //}
-    });
+  Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node) {
+    _node.code_generation_numbering = current_number++;
+  });
 }
 
 Construct.CodeGeneratorUtilities.MapSubstitute = function(template, substitutions) {
-    var result = template;
-    for(var sub_key in substitutions) {
-        result = template.replace(sub_key, substitutions[sub_key]);
-    }
-    return result;
+  var result = template;
+  for(var sub_key in substitutions) {
+    result = template.replace(sub_key, substitutions[sub_key]);
+  }
+  return result;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

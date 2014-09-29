@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>ConstructJS Testing</title>
+</head>
+<body>
+
+<div id="container"></div>
+
+<script src="js/stats.min.js"></script>
+<script src="js/three.min.js"></script>
+
+<script src="js/construct/construct-base.js"></script>
+<script src="js/construct/construct-webgl.js"></script>
+<script src="js/construct/construct-user-functions.js"></script>
+
+<script>
+    (function(obj){ for(var key in obj) window[key] = obj[key]; })(Construct.UserFunctions);
+</script>
+
+<script>
+    // Simple FPS gauage
+    var stats = new Stats();
+    stats.domElement.style.position = 'absolute';
+    stats.domElement.style.left = '0px';
+    stats.domElement.style.top = '0px';
+    document.body.appendChild( stats.domElement );
+
+    // Create a WebGL context for displaying to the user (and creating render targets)
+    var renderer = new THREE.WebGLRenderer();
+        renderer.setSize( 1024, 1024 );
+
+    document.getElementById( 'container' ).appendChild( renderer.domElement );
+
+    // The signed distance to the center of a circle
+    // f(x) = radius - length( x - center )
+    function circle( center, radius ) { return radius.minus( center.minus(identity()).length() ); }
+
+    function bump(center, pointedness) {
+      var dx = identity().minus(center);
+      return sf(0).minus( dx.dot(dx).times(pointedness) ).exp();
+    }
+
+    function laplacian(field, dx) {
+      return field.times( sf(-4) )
+      .plus( field.translate(vf( dx,  0)) )
+      .plus( field.translate(vf(-dx,  0)) )
+      .plus( field.translate(vf(  0, dx)) )
+      .plus( field.translate(vf(  0,-dx)) )
+      .dividedBy( sf(dx).times(sf(dx)) );
+    }
+  
+    // A unit radius circle centered at the origin
+    // Masked so that it is 1 inside the circle, 0 outside
+    // (For marking walls that waves should bounce off of)
+    var borders = circle( vf(0,0), sf(.95) ).mask();
+    
+    var q = bump(vf(.2,.1), sf(800)), q_old = q;
+  
+    animate();
+
+    function animate() {
+      stats.begin();
+      
+      var grid_res = 512;
+        
+      // Simulate a classical wave (simple integration, Euler step)
+      var h2 = sf( 1/(grid_res * grid_res) );
+
+      // Laplacian of Q
+      var Lq = laplacian(q, 1.0/grid_res);
+
+      var q_next = Lq.times(h2).plus( q.times(2) ).minus( q_old );
+      
+      // confine the wave to inside of the borders we defined earlier
+      q_old = q.times(borders);
+      q = q_next.times(borders);
+      
+      // If we do not write these to a grid, this expression tree will grow exponentially with time
+      q_old = writeToGrid( q_old, renderer, {width: grid_res, height: grid_res});
+      q = writeToGrid( q, renderer, {width: grid_res, height: grid_res});
+      
+      // Render the domain geometry in grey, and absolute value of the wave function in green.
+      var border_grey_level = sf(.5).minus(borders).mask().times(.15);
+      var q_intensity = q.abs().times(10);
+      
+      var whatToRender = matrixFromScalars( border_grey_level, border_grey_level, border_grey_level, 1 );
+      whatToRender = whatToRender.plus( matrixFromScalars( q_intensity, q_intensity.times(2), q_intensity, 0).times(.5) );
+      
+      Construct.WebGL.render(whatToRender, {renderer: renderer});
+      
+      stats.end();
+      requestAnimationFrame( animate );
+    }
+
+</script>
+
+</body>
+</html>

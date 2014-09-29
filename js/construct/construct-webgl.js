@@ -64,17 +64,20 @@ Construct.WebGL.GridRenderingFragmentShader = [
             Warp:           'return #left( #right( x ) );',
             Identity:       'return x;',
             Grid:           ['vec2 y = (x - vec2($gridMin.x, $gridMin.y)) / vec2($gridMax.x - $gridMin.x, $gridMax.y - $gridMin.y);',
-                             'return texture2D( $uniformName$uniformName, y ).rg;'].join('\n')
+                             'return texture2D( $uniformName, y ).rg;'].join('\n')
         },
         MatrixFieldNodeTypes: {
-            Constant:       'return mat2( float(m11), float(m21), float(m12), float(m22) );', //GLSL Column-major constructor.
+            Constant:       'return mat2( float($m11), float($m12), float($m21), float($m22) );',
+            FromScalars:    'return mat2( #child1(x), #child2(x), #child3(x), #child4(x) );',
             AddMatrix:      'return #left(x) + #right(x);',
             SubtractMatrix: 'return #left(x) - #right(x);',
             MultiplyMatrix: 'return #left(x) * #right(x);',
             MultiplyVector: 'return #left(x) * #right(x);',
             MultiplyScalar: 'return #left(x) * #right(x);',
-            Inverse:        'const mat2 m = #child(x); float d = m[0][0]*m[1][1] - m[1][0]*m[0][1]; return d * mat2( m[1][1], -m[0][1], -m[1][0], m[0][0]);',
-            Rotation:       'const float y = #child(x); const float c=cos(y), s=sin(y); return mat2(c,s,-s,c);',
+            Inverse:        'mat2 m = #child(x); float d = m[0][0]*m[1][1] - m[1][0]*m[0][1]; return d * mat2( m[1][1], -m[0][1], -m[1][0], m[0][0]);',
+            Rotation:       'float y = #child(x); float c=cos(y), s=sin(y); return mat2(c,s,-s,c);',
+
+            // Taylor series expansion for matrix exponential.. Could be made faster O(log(iter)) if we use more memory.
             Exponential:    'mat2 X = #child(x), Y = mat2(1,0,0,1); float kf = 1; for(int k=1; k<10; ++k) { kf *= float(k); Y = Y * X / kf; } return Y;',
             Log:            'TODO',
             Grid:           ['vec2 y = (x - vec2($gridMin.x, $gridMin.y)) / vec2($gridMax.x - $gridMin.x, $gridMax.y - $gridMin.y);',
@@ -139,7 +142,7 @@ Construct.WebGL.GridRenderingFragmentShader = [
 
     // Child nodes -- #[a-zA-z]*
     function replace_node_child_patterns(str, node) {
-        var matches = str.match( /#[a-zA-Z]*/g );
+        var matches = str.match( /#[a-zA-Z][a-zA-Z0-9]*/g );
         var result = str;
         if (matches) {
             matches.forEach(function (match) {
@@ -188,10 +191,14 @@ Construct.WebGL.GridRenderingFragmentShader = [
     // otherwise we currently forced to naively create textures very frequently (perhaps several
     // times a frame). Because allocating these resources is very expensive, until a better
     // solution is found, this factory keeps a 'large' ring of textures and pre-allocates those
-    // textures. The ring is assumed large enough so that it can store the number of targets
-    // that will exist during the execution of a user's code at any given point.
+    // textures. The ring is assumed large enough so that it can store the maximum number of targets
+    // that will simultaneous exist during the execution of a user's code at any given point.
     //
     // This is a big TODO: Find a way to not have a static allocation of textures cycling.
+    //
+    // Let me say that again: This is _terrible_. With that said, I don't know another way to do this
+    // without compromising on the dev experience.
+    //
     Construct.WebGL.RenderTargetFactory = (function() {
         var _texturePointer = {};
         var _maxTextures = 20;
@@ -210,8 +217,10 @@ Construct.WebGL.GridRenderingFragmentShader = [
                     {
                         minFilter: THREE.LinearFilter,
                         magFilter: THREE.LinearFilter,
+                        stencilBuffer:false,
+                        depthBuffer:false,
                         format: THREE.RGBAFormat,
-                        type: THREE.FLOAT_TYPE
+                        type: THREE.FloatType
                     })
                 );
             }
@@ -237,9 +246,8 @@ Construct.WebGL.GridRenderingFragmentShader = [
                     _texturePointer[key] = 0;
                 }
                 
-                var texturePointer = _texturePointer[key];
-                var currentTarget = textures[texturePointer];
-                texturePointer = (1 + texturePointer) % _maxTextures;
+                var currentTarget = textures[_texturePointer[key]];
+                _texturePointer[key] = (1 + _texturePointer[key]) % _maxTextures;
                 return currentTarget;
             }
         };
@@ -277,23 +285,32 @@ Construct.WebGL.generateGLSL = function(root_node) {
 
     // Get code for all nodes in the tree
     var node_function_code = [];
-    Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node){
+  
+    // Note: It's possible a single node appears multiple times in the expression tree. In order to 
+    // avoid emitting that code twice, keep track of what's already been generated.
+    var already_generated_nodes = {};
+  
+    Construct.CodeGeneratorUtilities.postOrderTraversal(root_node, function(_node) {
+        if ( already_generated_nodes.hasOwnProperty(_node.code_generation_numbering) ) { return; }
+        
         node_function_code.push(_node.WebGLCodeGenerator());
+        already_generated_nodes[_node.code_generation_numbering] = true;
     });
 
     // Generate code for outputting the root values
     var rendering_code = [];
     rendering_code.push('void main() {');
     rendering_code.push('  vec2 x = vUv * 2.0 - 1.0;');
-
+  
     var root_node_function_name = Construct.WebGL.node_namer(root_node);
+  
     if (root_node instanceof Construct.ScalarFieldNode) {
         rendering_code.push('  float root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
         rendering_code.push('  gl_FragColor = vec4(root,root,root,1);');
     }
     else if (root_node instanceof Construct.VectorFieldNode) {
         rendering_code.push('  vec2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
-        rendering_code.push('  gl_FragColor = vec4(root, 0, 1)');
+        rendering_code.push('  gl_FragColor = vec4(root, 0, 1);');
     }
     else if (root_node instanceof Construct.MatrixFieldNode) {
         rendering_code.push('  mat2 root = ROOT_FUNC(x);'.replace('ROOT_FUNC', root_node_function_name) );
